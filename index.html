@@ -14,6 +14,21 @@ function main(){
     const far = 5;  // space of camera
     const camera = new THREE.PerspectiveCamera(fov, aspect, near, far); // Defines a 'Frustum': 3D shape shaped like a pyramid
                                                                         // with the tip sliced off 
+    
+    camera.position.z = 2;  // Puts the camera +2 in the Z plane
+
+    // Scene: root of a form of scene graph. Anything that will be drawn needs to be added
+    //        to a scene
+    const scene = new THREE.Scene();
+
+    const boxWidth = 1;
+    const boxHeight = 1;
+    const boxDepth = 1;
+    const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);  // Contains the data for the box
+
+    const material = new THREE.MeshBasicMaterial({color: 0x44aa88});    // Sets material and color
+
+    
 }
 </script>
 
