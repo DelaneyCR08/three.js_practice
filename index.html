@@ -1,0 +1,22 @@
+<script type="module"> // type="module" enables the use of "import" keyword
+import * as THREE from 'three';     // Imports three.js library
+
+// Draws into canvas in HTML
+function main(){
+    const canvas = document.querySelector('#c');    // Gets canavs id
+    // WebGLRenderer: responsible for actually taking data provided and rendering it to canvas
+    const renderer = new THREE.WebGLRenderer({antialias: true, canvas});
+    // Creates the Perspective Camera
+    const fov = 75; // Field of View: 75 degrees in the vertical dimension
+    const aspect = 2;   // Canvas default: canvas is 300x150, or just 2
+    // Anything beyond or before that range will not be clipped (drawn)
+    const near = 0.1;   // space of camera
+    const far = 5;  // space of camera
+    const camera = new THREE.PerspectiveCamera(fov, aspect, near, far); // Defines a 'Frustum': 3D shape shaped like a pyramid
+                                                                        // with the tip sliced off 
+}
+</script>
+
+<body>
+    <canvas id="c"></canvas>  <!--<canvas>: tag that draws elements using JS-->
+</body>
