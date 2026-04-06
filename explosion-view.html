@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exploded View — Three.js</title>
+  <style> 
+  /* Basic styling for background of 3D design*/
+    * {
+       margin: 0; 
+       padding: 0; 
+       box-sizing: border-box; 
+      }
+      
+    body {
+        background: #0f0f11; 
+        overflow: hidden; 
+        font-family: system-ui, sans-serif; 
+      }
+
+    canvas { 
+      display: block;
+       width: 100vw; 
+       height: 100vh; 
+      }
+
+    #ui {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+    }
+    #hint {
+      font-size: 13px;
+      color: #ccc;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 7px 18px;
+      border-radius: 20px;
+      backdrop-filter: blur(8px);
+      transition: opacity 0.3s;
+    }
+
+    #controls {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      pointer-events: all;
+    }
+    #controls button {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #eee;
+      font-size: 13px;
+      padding: 8px 20px;
+      border-radius: 20px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: background 0.2s;
+    }
+    #controls button:hover { background: rgba(255,255,255,0.16); }
+
+    #label-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    .part-label {
+      position: absolute;
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+      background: rgba(0,0,0,0.45);
+      padding: 2px 8px;
+      border-radius: 10px;
+      transform: translate(-50%, -50%);
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #orbit-hint {
+      position: fixed;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<!--Creates the canvas where the 3D element will appear-->
+<canvas id="c"></canvas>
+
+<!--<div id="ui">
+  Appears at the top of the 3D model
+  <div id="hint">Click any part to explode</div>
+</div>-->
+
+<div id="controls">
+  <!--Buttons to control explosion view-->
+  <button id="btnExplode">Explode</button>  <!--Causes explosion-->
+  <button id="btnReset">Collapse</button>   <!--Causes for return of explosion view (Default position)-->
+</div>
+
+<div id="label-overlay" id="labels"></div>
+<div id="orbit-hint">Drag to orbit · Scroll to zoom</div>
+
+<!--"Nickname", imports the links and sets them as names to make it easier calling them-->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+// Import Libraries
+import * as THREE from 'three'; // Imports three.js library
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // Alows drag, rotate, scroll, and zoom camera behavior
+// Libaries needed for .obj file (Fusion360 File)
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';  // Reads actual .obj file
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';  // Reads material file
+window.THREE = THREE; // Debugging purpose
+
+// Renders in canvas for 3D model:
+const canvas = document.getElementById('c');  // saves in <canvas>
+  // Link: https://threejs.org/docs/#WebGLRenderer
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });  /* canvas = The canvas element in which the renderer draws the output
+                                                                          antialias: true = Uses default MSAA (Multisample Anti-Aliasing)
+                                                                          MSSA = Improves edge quality by sampling mutliple points per pixel  */
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Helps to set screen sharpness to ensure good render quality (has a maximum of 2x)
+// Shadow:
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;   // Creates more realistic lighting (avoids harsh white spots to occur)
+renderer.toneMappingExposure = 1.1;
+
+// Scene and camera
+const scene = new THREE.Scene();  // Creates the scene (Where the 3D element will be shown)
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 2000); /* Uses perspective projection
+                                                                Parameters: (fov, aspect, near, far) => default: (50,1,0.1, 2000)
+                                                                fov = field of view, aspect = aspect ratio,
+                                                                near = the camera's near plane, far = camera's far plane
+                                                                 Link to resource: https://threejs.org/docs/#PerspectiveCamera
+                                                              */
+window.scene = scene; // Debuging purposes
+scene.background = new THREE.Color(0x0f0f11); // Background color of scene
+scene.fog = new THREE.Fog(0x0f0f11, 20, 60);  // Adds fog to the background
+
+camera.position.set(0, 4, 10);    // Places the position of the camera (default position)
+
+// Orbit Controls:
+const controls = new OrbitControls(camera, canvas); // Maintains Y+ direction by default 
+// Continues movement even if user stops interacting with object
+controls.enableDamping = true;  // NOTE: Need to add update() to animation function
+controls.dampingFactor = 0.06;
+
+// Lighting:
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+const key = new THREE.DirectionalLight(0xffffff, 1.2);
+key.position.set(6, 10, 8);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5;
+key.shadow.camera.far = 60;
+key.shadow.camera.left = key.shadow.camera.bottom = -10;
+key.shadow.camera.right = key.shadow.camera.top = 10;
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0x8899ff, 0.4);
+fill.position.set(-6, 4, -4);
+scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xffffff, 0.3);
+rim.position.set(0, -4, -8);
+scene.add(rim);
+
+// Ground plane to receive shadows
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40),
+  new THREE.ShadowMaterial({ opacity: 0.25 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -2.2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Grid helper
+const grid = new THREE.GridHelper(20, 30, 0x333344, 0x222233);
+grid.position.y = -2.21;
+scene.add(grid);
+
+// ─── Part Registration ───────────────────────────────────────
+// All meshes go through registerPart() so the explode system
+// knows about them.
+const parts = [];
+window.parts = parts;
+
+function registerPart(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  mesh.userData.originalPos = mesh.position.clone();
+  mesh.userData.targetPos   = mesh.position.clone();
+
+  parts.push(mesh);
+}
+// ─── 3D Element ───────────────────────────────────────────
+const labelOverlay = document.getElementById('label-overlay');
+const labelEls = [];
+
+const mtlLoader = new MTLLoader();
+
+const nameMap = {
+  'Body1':   'Top',
+  'Body4':   'Box',
+  /*'Body1:1': 'Short Side One',
+  'Body2:1': 'Long Side Two',
+  'Body1:2': 'Short Side Two',
+  'Body2:2': 'Top Cover'*/
+};
+
+mtlLoader.load('Box (Assembly).mtl', (materials) => {
+  materials.preload();
+  const objLoader = new OBJLoader();
+  objLoader.setMaterials(materials);
+  objLoader.load('Box (Assembly).obj', (object) => {
+    object.traverse(child => {
+      if (child.isMesh) registerPart(child);
+    });
+    scene.add(object);
+    fitCameraToModel(object);
+
+    // Compute world-space centers after object is in the scene
+    parts.forEach(mesh => {
+      const center = new THREE.Vector3();
+      new THREE.Box3().setFromObject(mesh).getCenter(center);
+      mesh.userData.center = center;
+    });
+
+    // Create labels after meshes exist AND have world positions
+    parts.forEach((mesh, i) => {
+      const el = document.createElement('div');
+      el.className = 'part-label';
+      el.textContent = nameMap[mesh.name] || mesh.name || `Part ${i + 1}`;
+      labelOverlay.appendChild(el);
+      labelEls.push({ el, mesh });
+    });
+  });
+});
+
+// ─── Explode Logic ───────────────────────────────────────────
+const MODEL_CENTER = new THREE.Vector3(0, 0, 0);
+const EXPLODE_DISTANCE = 2.2;
+let exploded = false;
+
+function setExploded(state) {
+  exploded = state;
+
+  parts.forEach(mesh => {
+    if (exploded) {
+      // Direction from model center to this part's center
+      const dir = mesh.userData.center.clone().sub(MODEL_CENTER);
+      if (dir.length() < 0.001) dir.set(0, 1, 0); // fallback for centered parts
+      dir.normalize();
+      mesh.userData.targetPos = mesh.userData.originalPos.clone()
+        .add(dir.multiplyScalar(EXPLODE_DISTANCE));
+    } else {
+      mesh.userData.targetPos = mesh.userData.originalPos.clone();
+    }
+  });
+
+  document.getElementById('hint').textContent = exploded
+    ? 'Click any part to collapse · Click again to explode'
+    : 'Click any part to explode';
+
+  // Show/hide labels
+  document.querySelectorAll('.part-label').forEach(el => {
+    el.style.opacity = exploded ? '1' : '0';
+  });
+}
+// ─── Raycasting (click) ──────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  if (raycaster.intersectObjects(parts, true).length > 0) {
+    setExploded(!exploded);
+  }
+});
+
+// Cursor feedback
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  canvas.style.cursor =
+    raycaster.intersectObjects(parts, true).length > 0 ? 'pointer' : 'default';
+});
+
+// Buttons
+document.getElementById('btnExplode').addEventListener('click', () => setExploded(true));
+document.getElementById('btnReset').addEventListener('click',   () => setExploded(false));
+
+// ─── Helpers ─────────────────────────────────────────────────
+// Easing: fast out, slow settle
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+// Fit camera to any loaded object (useful with real OBJ files)
+function fitCameraToModel(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const size = box.getSize(new THREE.Vector3()).length();
+  const center = box.getCenter(new THREE.Vector3());
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(0, size * 0.4, size * 1.2));
+  camera.near = size / 100;
+  camera.far  = size * 10;
+  camera.updateProjectionMatrix();
+  controls.minDistance = size * 0.3;
+  controls.maxDistance = size * 5;
+  MODEL_CENTER.copy(center);
+}
+
+// ─── Resize ──────────────────────────────────────────────────
+function onResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// ─── Render Loop ─────────────────────────────────────────────
+const tmpVec = new THREE.Vector3();
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  scene.updateMatrixWorld(true); // add this line
+  camera.updateMatrixWorld(); // add this line
+
+  // Smooth lerp each part toward its target
+  parts.forEach(mesh => {
+    mesh.position.lerp(mesh.userData.targetPos, 0.07);
+  });
+
+  // Update label positions
+  labelEls.forEach(({ el, mesh }) => {
+    // Use the stored world-space center, offset by how far the mesh has moved
+    const offset = mesh.position.clone().sub(mesh.userData.originalPos);
+    tmpVec.copy(mesh.userData.center).add(offset);
+    tmpVec.project(camera);
+    const x = (tmpVec.x *  0.5 + 0.5) * window.innerWidth;
+    const y = (tmpVec.y * -0.5 + 0.5) * window.innerHeight;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+  });
+
+  renderer.render(scene, camera);
+}
+
+animate();
+</script>
+</body>
+</html>
